@@ -4,6 +4,10 @@ import base64
 
 app = Flask(__name__)
 
+@app.route('/')
+def home():
+    return jsonify({"status": "Server running successfully ✅", "message": "Homomorphic encryption API active"})
+
 @app.route("/process_encrypted", methods=["POST"])
 def process_encrypted():
     try:
