@@ -1,4 +1,4 @@
 flask
-tenseal
 gunicorn
- 
+tenseal
+numpy
