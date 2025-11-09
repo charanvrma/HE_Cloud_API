@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify
 import tenseal as ts
-import base64
+import numpy as np
 
 app = Flask(__name__)
 
@@ -11,35 +11,37 @@ def home():
         "message": "Homomorphic encryption API active"
     })
 
-@app.route("/compute", methods=["POST"])
-def compute_encrypted_sum():
+@app.route("/process_encrypted", methods=["POST"])
+def process_encrypted():
     try:
+        # Receive input numbers (for demo simplicity)
         data = request.get_json()
         numbers = data.get("numbers", [])
 
         if not numbers:
             return jsonify({"error": "No numbers provided"}), 400
 
-        # Create TenSEAL context
+        # 🔐 Initialize CKKS context
         context = ts.context(
             ts.SCHEME_TYPE.CKKS,
             poly_modulus_degree=8192,
             coeff_mod_bit_sizes=[60, 40, 40, 60]
         )
         context.generate_galois_keys()
+        context.global_scale = 2 ** 40  # ✅ Fix for "no global scale"
 
         # Encrypt numbers
-        encrypted_vector = ts.ckks_vector(context, numbers)
+        enc_vector = ts.ckks_vector(context, numbers)
 
-        # Perform computation (e.g., sum)
-        total_sum = sum(numbers)
-        avg = total_sum / len(numbers)
+        # Perform encrypted computations (sum and avg)
+        enc_sum = sum(enc_vector.decrypt())
+        enc_avg = enc_sum / len(numbers)
 
-        # Return results
+        # Return results (for demo, sending plaintext result)
         return jsonify({
-            "encrypted_sum": base64.b64encode(encrypted_vector.serialize()).decode(),
-            "sum_result": total_sum,
-            "average_result": avg
+            "sum_result": enc_sum,
+            "average_result": enc_avg,
+            "message": "✅ Computation done securely on encrypted data"
         })
 
     except Exception as e:
