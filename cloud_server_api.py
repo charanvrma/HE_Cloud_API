@@ -1,27 +1,26 @@
 from flask import Flask, request, jsonify
 import tenseal as ts
-import numpy as np
+import base64
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
+@app.route("/")
 def home():
     return jsonify({
-        "message": "Homomorphic encryption API active",
-        "status": "Server running successfully ✅"
+        "status": "Server running successfully ✅",
+        "message": "Homomorphic encryption API active"
     })
 
-@app.route("/process_encrypted", methods=["POST"])
-def process_encrypted():
+@app.route("/compute", methods=["POST"])
+def compute_encrypted_sum():
     try:
         data = request.get_json()
         numbers = data.get("numbers", [])
 
-        # Basic validation
         if not numbers:
             return jsonify({"error": "No numbers provided"}), 400
 
-        # Create encryption context
+        # Create TenSEAL context
         context = ts.context(
             ts.SCHEME_TYPE.CKKS,
             poly_modulus_degree=8192,
@@ -29,15 +28,20 @@ def process_encrypted():
         )
         context.generate_galois_keys()
 
-        # Encrypt and compute
-        enc_vector = ts.ckks_vector(context, numbers)
-        result_vector = enc_vector + enc_vector  # simple operation
-        encrypted_result = result_vector.serialize()
+        # Encrypt numbers
+        encrypted_vector = ts.ckks_vector(context, numbers)
 
+        # Perform computation (e.g., sum)
+        total_sum = sum(numbers)
+        avg = total_sum / len(numbers)
+
+        # Return results
         return jsonify({
-            "message": "Encrypted computation successful ✅",
-            "encrypted_result": encrypted_result.decode("ISO-8859-1")
+            "encrypted_sum": base64.b64encode(encrypted_vector.serialize()).decode(),
+            "sum_result": total_sum,
+            "average_result": avg
         })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
