@@ -1,41 +1,46 @@
 from flask import Flask, request, jsonify
 import tenseal as ts
-import base64
+import numpy as np
 
 app = Flask(__name__)
 
-@app.route('/')
+@app.route("/", methods=["GET"])
 def home():
-    return jsonify({"status": "Server running successfully ✅", "message": "Homomorphic encryption API active"})
+    return jsonify({
+        "message": "Homomorphic encryption API active",
+        "status": "Server running successfully ✅"
+    })
 
 @app.route("/process_encrypted", methods=["POST"])
 def process_encrypted():
     try:
-        # Parse incoming JSON
-        data = request.json
-        context_bytes = base64.b64decode(data["context"])
-        encrypted_list = [base64.b64decode(x) for x in data["encrypted"]]
+        data = request.get_json()
+        numbers = data.get("numbers", [])
 
-        # Load TenSEAL context (public)
-        ctx = ts.context_from(context_bytes)
+        # Basic validation
+        if not numbers:
+            return jsonify({"error": "No numbers provided"}), 400
 
-        # Deserialize ciphertexts
-        encrypted_vectors = [ts.ckks_vector_from(ctx, e) for e in encrypted_list]
+        # Create encryption context
+        context = ts.context(
+            ts.SCHEME_TYPE.CKKS,
+            poly_modulus_degree=8192,
+            coeff_mod_bit_sizes=[60, 40, 40, 60]
+        )
+        context.generate_galois_keys()
 
-        # Compute encrypted sum
-        enc_sum = encrypted_vectors[0]
-        for e in encrypted_vectors[1:]:
-            enc_sum += e
+        # Encrypt and compute
+        enc_vector = ts.ckks_vector(context, numbers)
+        result_vector = enc_vector + enc_vector  # simple operation
+        encrypted_result = result_vector.serialize()
 
-        # Serialize and return result
-        result_bytes = enc_sum.serialize()
-        result_b64 = base64.b64encode(result_bytes).decode()
-
-        return jsonify({"encrypted_result": result_b64})
+        return jsonify({
+            "message": "Encrypted computation successful ✅",
+            "encrypted_result": encrypted_result.decode("ISO-8859-1")
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
-    # run locally for testing
     app.run(host="0.0.0.0", port=5000)
