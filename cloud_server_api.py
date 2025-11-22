@@ -1,52 +1,52 @@
+# Major_Project/HE_Cloud_API/cloud_server_api.py
 from flask import Flask, request, jsonify
 import tenseal as ts
-import numpy as np
+import base64
+import logging
 
 app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
 
 @app.route("/")
 def home():
-    return jsonify({
-        "status": "Server running successfully ✅",
-        "message": "Homomorphic encryption API active"
-    })
+    return jsonify({"status": "HE Cloud API running"})
 
 @app.route("/process_encrypted", methods=["POST"])
 def process_encrypted():
     try:
-        # Receive input numbers (for demo simplicity)
-        data = request.get_json()
-        numbers = data.get("numbers", [])
+        payload = request.get_json()
+        context_b64 = payload.get("context_public")
+        ciphertexts_b64 = payload.get("ciphertexts", [])
 
-        if not numbers:
-            return jsonify({"error": "No numbers provided"}), 400
+        if not context_b64 or not ciphertexts_b64:
+            return jsonify({"error": "context_public and ciphertexts required"}), 400
 
-        # 🔐 Initialize CKKS context
-        context = ts.context(
-            ts.SCHEME_TYPE.CKKS,
-            poly_modulus_degree=8192,
-            coeff_mod_bit_sizes=[60, 40, 40, 60]
-        )
-        context.generate_galois_keys()
-        context.global_scale = 2 ** 40  # ✅ Fix for "no global scale"
+        # reconstruct context (public only, no secret key)
+        context_bytes = base64.b64decode(context_b64.encode("utf-8"))
+        ctx = ts.context_from(context_bytes)
 
-        # Encrypt numbers
-        enc_vector = ts.ckks_vector(context, numbers)
+        app.logger.info("Received ciphertexts (base64/truncated):")
+        for i, cb64 in enumerate(ciphertexts_b64):
+            app.logger.info(f"  ciphertext[{i}] (trunc): {cb64[:120]}...")
+            if i >= 2:
+                break
 
-        # Perform encrypted computations (sum and avg)
-        enc_sum = sum(enc_vector.decrypt())
-        enc_avg = enc_sum / len(numbers)
+        # deserialize ciphertexts and compute encrypted sum
+        enc_vectors = [ts.ckks_vector_from(ctx, base64.b64decode(cb64.encode("utf-8"))) for cb64 in ciphertexts_b64]
 
-        # Return results (for demo, sending plaintext result)
-        return jsonify({
-            "sum_result": enc_sum,
-            "average_result": enc_avg,
-            "message": "✅ Computation done securely on encrypted data"
-        })
+        res = enc_vectors[0]
+        for e in enc_vectors[1:]:
+            res += e
+
+        # serialize result and return base64
+        res_bytes = res.serialize()
+        res_b64 = base64.b64encode(res_bytes).decode("utf-8")
+
+        return jsonify({"result_ciphertext": res_b64}), 200
 
     except Exception as e:
+        app.logger.exception("Error in processing encrypted request")
         return jsonify({"error": str(e)}), 500
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
